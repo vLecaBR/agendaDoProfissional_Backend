@@ -1,23 +1,28 @@
 const express = require('express');
 const passport = require('passport');
-require('../services/googleAuth.service');
+require('../services/googleAuth.service'); // configura passport Google OAuth
 
 const router = express.Router();
 const auth = require('../controllers/auth.controller');
-const authMiddleware = require('../middlewares/auth.middleware');
+const { authenticate, authorizeRoles } = require('../middlewares/auth.middleware');
 
+// Registro com email/senha (qualquer um pode criar, mas role padrão é CLIENT)
 router.post('/register', auth.register);
-router.post('/login', auth.login);
-router.get('/me', authMiddleware, auth.getProfile);
 
-// Rota para login com Google
+// Login com email/senha
+router.post('/login', auth.login);
+
+// Rota protegida que retorna perfil do usuário logado
+router.get('/me', authenticate, auth.getProfile);
+
+// Login via Google OAuth
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 
+// Callback do Google após autenticação
 router.get('/google/callback',
   passport.authenticate('google', { session: false, failureRedirect: '/' }),
   (req, res) => {
     const token = req.user.token;
-    // redireciona para frontend com o token como query param
     res.redirect(`http://localhost:5173/login/success?token=${token}`);
   }
 );

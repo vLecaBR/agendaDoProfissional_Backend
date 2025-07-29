@@ -7,22 +7,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id          String     @id @default(uuid())
-  name        String
-  email       String     @unique
-  password    String?    // fica null se for login via Google
-  googleId    String?    // ID do Google se login for social
-  calendarId  String?    
-  schedule    Schedule[]
-  bookings    Booking[]
-  createdAt   DateTime   @default(now())
+enum Role {
+  ADMIN
+  PROFESSIONAL
+  CLIENT
 }
 
+model User {
+  id             String     @id @default(uuid())
+  name           String
+  email          String     @unique
+  password       String?
+  googleId       String?
+  calendarId     String?
+  role           Role       @default(CLIENT)
+  schedule       Schedule[]
+  bookings       Booking[]  @relation("UserBookings")
+  professionalOf Booking[]  @relation("ProfessionalBookings")
+  createdAt      DateTime   @default(now())
+}
 
 model Schedule {
-  id        String   @id @default(uuid())
-  user      User     @relation(fields: [userId], references: [id])
+  id        String @id @default(uuid())
+  user      User   @relation(fields: [userId], references: [id])
   userId    String
   dayOfWeek Int
   startTime String
@@ -30,12 +37,19 @@ model Schedule {
 }
 
 model Booking {
-  id           String   @id @default(uuid())
-  user         User     @relation(fields: [userId], references: [id])
-  userId       String
-  clientName   String
-  clientEmail  String
-  date         DateTime
-  note         String?
-  createdAt    DateTime @default(now())
+  id String @id @default(uuid())
+
+  user   User   @relation("UserBookings", fields: [userId], references: [id])
+  userId String
+
+  professional   User   @relation("ProfessionalBookings", fields: [professionalId], references: [id])
+  professionalId String
+
+  clientName     String
+  clientEmail    String
+  clientWhatsapp String
+  serviceType    String
+  date           DateTime
+  note           String?
+  createdAt      DateTime @default(now())
 }

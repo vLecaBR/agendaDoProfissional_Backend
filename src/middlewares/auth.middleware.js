@@ -1,29 +1,33 @@
 const jwt = require('jsonwebtoken');
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient, Role } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-module.exports = async (req, res, next) => {
+// Middleware de autenticação padrão
+exports.authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ message: 'Token não enviado' });
+  if (!authHeader || !authHeader.startsWith('Bearer '))
+    return res.status(401).json({ message: 'Token não fornecido' });
 
   const token = authHeader.split(' ')[1];
-
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
 
-    // Busca o usuário no banco com base no ID
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-    });
+    if (!user) return res.status(401).json({ message: 'Usuário inválido' });
 
-    if (!user) {
-      return res.status(401).json({ message: 'Usuário não encontrado' });
-    }
-
-    req.user = user; // aqui mudamos de `req.userId` para `req.user`
+    req.user = user; // Disponível nas rotas
     next();
   } catch (err) {
-    console.error('Erro na verificação do token:', err);
-    res.status(401).json({ message: 'Token inválido' });
+    return res.status(401).json({ message: 'Token inválido ou expirado' });
   }
+};
+
+// Middleware de autorização por papel (ADMIN, PROFESSIONAL, CLIENT)
+exports.authorizeRoles = (...roles) => {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ message: 'Acesso negado' });
+    }
+    next();
+  };
 };
