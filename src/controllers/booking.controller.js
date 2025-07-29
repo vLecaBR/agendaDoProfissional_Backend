@@ -153,7 +153,6 @@ async function updateBooking(req, res) {
       return res.status(404).json({ message: 'Agendamento não encontrado' });
     }
 
-    // Se for atualizar horário ou duração, verificar conflito
     const newDate = date ? new Date(date) : booking.date;
     const newDuration = duration ?? booking.duration;
 
@@ -226,10 +225,32 @@ async function deleteBooking(req, res) {
   }
 }
 
+// PEGAR HORÁRIOS OCUPADOS DE UM PROFISSIONAL
+async function getOccupiedSlots(req, res) {
+  const { professionalId } = req.params;
+
+  try {
+    const bookings = await prisma.booking.findMany({
+      where: { professionalId },
+      select: {
+        date: true,
+        duration: true,
+      },
+      orderBy: { date: 'asc' },
+    });
+
+    return res.json(bookings);
+  } catch (error) {
+    console.error('Erro ao buscar horários ocupados:', error);
+    return res.status(500).json({ message: 'Erro ao buscar horários ocupados' });
+  }
+}
+
 module.exports = {
   createBooking,
   listBookings,
   getBooking,
   updateBooking,
   deleteBooking,
+  getOccupiedSlots, // 👈 não pode esquecer disso!
 };
