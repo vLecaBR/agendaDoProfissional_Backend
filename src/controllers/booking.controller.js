@@ -1,7 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// Criar agendamento
+// Criar agendamento (todos podem criar, só valida o profissional)
 async function createBooking(req, res) {
   const userId = req.user.id;
   const {
@@ -79,23 +79,32 @@ async function createBooking(req, res) {
   }
 }
 
-// Listar agendamentos
+// Listar agendamentos com controle de acesso por role
 async function listBookings(req, res) {
   const userId = req.user.id;
   const userRole = req.user.role;
 
   try {
     let bookings;
-    if (userRole === 'PROFESSIONAL') {
+    if (userRole === 'ADMIN') {
+      // ADMIN vê tudo
+      bookings = await prisma.booking.findMany({
+        orderBy: { date: 'asc' },
+      });
+    } else if (userRole === 'PROFESSIONAL') {
+      // PROFESSIONAL só os que ele é o profissional
       bookings = await prisma.booking.findMany({
         where: { professionalId: userId },
         orderBy: { date: 'asc' },
       });
-    } else {
+    } else if (userRole === 'CLIENT') {
+      // CLIENT só os que ele criou
       bookings = await prisma.booking.findMany({
         where: { userId },
         orderBy: { date: 'asc' },
       });
+    } else {
+      return res.status(403).json({ message: 'Role não autorizado' });
     }
 
     return res.json(bookings);
@@ -105,7 +114,7 @@ async function listBookings(req, res) {
   }
 }
 
-// Buscar agendamento por ID
+// Buscar agendamento por ID com controle de acesso
 async function getBooking(req, res) {
   const userId = req.user.id;
   const userRole = req.user.role;
@@ -118,21 +127,30 @@ async function getBooking(req, res) {
       return res.status(404).json({ message: 'Agendamento não encontrado' });
     }
 
-    if (
-      (userRole === 'CLIENT' && booking.userId !== userId) ||
-      (userRole === 'PROFESSIONAL' && booking.professionalId !== userId)
-    ) {
-      return res.status(403).json({ message: 'Acesso negado' });
+    // ADMIN pode acessar tudo
+    if (userRole === 'ADMIN') {
+      return res.json(booking);
     }
 
-    return res.json(booking);
+    // PROFESSIONAL só pode acessar se for o profissional do agendamento
+    if (userRole === 'PROFESSIONAL' && booking.professionalId === userId) {
+      return res.json(booking);
+    }
+
+    // CLIENT só pode acessar se for o dono do agendamento
+    if (userRole === 'CLIENT' && booking.userId === userId) {
+      return res.json(booking);
+    }
+
+    // Se não passou em nenhum, é acesso negado
+    return res.status(403).json({ message: 'Acesso negado' });
   } catch (error) {
     console.error('Erro buscando booking:', error);
     return res.status(500).json({ message: 'Erro ao buscar agendamento' });
   }
 }
 
-// Atualizar agendamento
+// Atualizar agendamento (só o dono cliente pode atualizar)
 async function updateBooking(req, res) {
   const userId = req.user.id;
   const { id } = req.params;
@@ -149,8 +167,13 @@ async function updateBooking(req, res) {
   try {
     const booking = await prisma.booking.findUnique({ where: { id } });
 
-    if (!booking || booking.userId !== userId) {
+    if (!booking) {
       return res.status(404).json({ message: 'Agendamento não encontrado' });
+    }
+
+    // Só o dono cliente pode atualizar
+    if (booking.userId !== userId) {
+      return res.status(403).json({ message: 'Acesso negado' });
     }
 
     const newDate = date ? new Date(date) : booking.date;
@@ -205,7 +228,7 @@ async function updateBooking(req, res) {
   }
 }
 
-// Deletar agendamento
+// Deletar agendamento (só o dono cliente pode deletar)
 async function deleteBooking(req, res) {
   const userId = req.user.id;
   const { id } = req.params;
@@ -213,8 +236,13 @@ async function deleteBooking(req, res) {
   try {
     const booking = await prisma.booking.findUnique({ where: { id } });
 
-    if (!booking || booking.userId !== userId) {
+    if (!booking) {
       return res.status(404).json({ message: 'Agendamento não encontrado' });
+    }
+
+    // Só o dono cliente pode deletar
+    if (booking.userId !== userId) {
+      return res.status(403).json({ message: 'Acesso negado' });
     }
 
     await prisma.booking.delete({ where: { id } });
@@ -252,5 +280,5 @@ module.exports = {
   getBooking,
   updateBooking,
   deleteBooking,
-  getOccupiedSlots, 
+  getOccupiedSlots,
 };
