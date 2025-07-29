@@ -1,6 +1,27 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// Duração padrão dos serviços (exemplo)
+const defaultDurations = {
+  'Corte de cabelo': 30,
+  'Barba': 20,
+  'Manicure': 45,
+  // adiciona mais serviços aqui
+};
+
+function isWeekend(date) {
+  const day = date.getDay();
+  return day === 0 || day === 6; // domingo = 0, sábado = 6
+}
+
+function isWithinWorkingHours(date, duration) {
+  const startHour = date.getHours() + date.getMinutes() / 60;
+  const endDate = new Date(date.getTime() + duration * 60000);
+  const endHour = endDate.getHours() + endDate.getMinutes() / 60;
+
+  return startHour >= 8 && endHour <= 18;
+}
+
 // Criar agendamento (todos podem criar, só valida o profissional)
 async function createBooking(req, res) {
   const userId = req.user.id;
@@ -13,13 +34,21 @@ async function createBooking(req, res) {
     date,
     duration,
     note,
+    holidays = [], // array de feriados ['YYYY-MM-DD']
   } = req.body;
 
-  if (!professionalId || !clientName || !clientEmail || !serviceType || !date || !duration) {
+  if (!professionalId || !clientName || !clientEmail || !serviceType || !date) {
     return res.status(400).json({
-      message: 'Campos obrigatórios: professionalId, clientName, clientEmail, serviceType, date, duration',
+      message: 'Campos obrigatórios: professionalId, clientName, clientEmail, serviceType, date',
     });
   }
+
+  // Define duração pelo padrão do serviço, se não enviar duration
+  const serviceDuration = defaultDurations[serviceType];
+  if (!serviceDuration && !duration) {
+    return res.status(400).json({ message: 'Duração do serviço não definida' });
+  }
+  const finalDuration = duration ?? serviceDuration;
 
   try {
     const professional = await prisma.user.findUnique({ where: { id: professionalId } });
@@ -28,8 +57,26 @@ async function createBooking(req, res) {
     }
 
     const startDate = new Date(date);
-    const endDate = new Date(startDate.getTime() + duration * 60000);
 
+    // Verifica final de semana
+    if (isWeekend(startDate)) {
+      return res.status(400).json({ message: 'Agendamento não permitido em finais de semana' });
+    }
+
+    // Verifica feriados
+    const startDateStr = startDate.toISOString().split('T')[0];
+    if (holidays.includes(startDateStr)) {
+      return res.status(400).json({ message: 'Agendamento não permitido em feriados' });
+    }
+
+    // Verifica horário funcionamento
+    if (!isWithinWorkingHours(startDate, finalDuration)) {
+      return res.status(400).json({ message: 'Agendamento fora do horário de funcionamento (8h às 18h)' });
+    }
+
+    const endDate = new Date(startDate.getTime() + finalDuration * 60000);
+
+    // Verifica conflito de horário
     const conflictingBooking = await prisma.booking.findFirst({
       where: {
         professionalId,
@@ -43,11 +90,7 @@ async function createBooking(req, res) {
           {
             AND: [
               { date: { lte: startDate } },
-              {
-                date: {
-                  lt: endDate,
-                },
-              },
+              { date: { lt: endDate } },
             ],
           },
         ],
@@ -58,6 +101,7 @@ async function createBooking(req, res) {
       return res.status(409).json({ message: 'Esse horário já está ocupado para o profissional selecionado' });
     }
 
+    // Cria agendamento
     const booking = await prisma.booking.create({
       data: {
         userId,
@@ -67,7 +111,7 @@ async function createBooking(req, res) {
         clientWhatsapp,
         serviceType,
         date: startDate,
-        duration,
+        duration: finalDuration,
         note,
       },
     });
@@ -87,18 +131,15 @@ async function listBookings(req, res) {
   try {
     let bookings;
     if (userRole === 'ADMIN') {
-      // ADMIN vê tudo
       bookings = await prisma.booking.findMany({
         orderBy: { date: 'asc' },
       });
     } else if (userRole === 'PROFESSIONAL') {
-      // PROFESSIONAL só os que ele é o profissional
       bookings = await prisma.booking.findMany({
         where: { professionalId: userId },
         orderBy: { date: 'asc' },
       });
     } else if (userRole === 'CLIENT') {
-      // CLIENT só os que ele criou
       bookings = await prisma.booking.findMany({
         where: { userId },
         orderBy: { date: 'asc' },
@@ -127,22 +168,18 @@ async function getBooking(req, res) {
       return res.status(404).json({ message: 'Agendamento não encontrado' });
     }
 
-    // ADMIN pode acessar tudo
     if (userRole === 'ADMIN') {
       return res.json(booking);
     }
 
-    // PROFESSIONAL só pode acessar se for o profissional do agendamento
     if (userRole === 'PROFESSIONAL' && booking.professionalId === userId) {
       return res.json(booking);
     }
 
-    // CLIENT só pode acessar se for o dono do agendamento
     if (userRole === 'CLIENT' && booking.userId === userId) {
       return res.json(booking);
     }
 
-    // Se não passou em nenhum, é acesso negado
     return res.status(403).json({ message: 'Acesso negado' });
   } catch (error) {
     console.error('Erro buscando booking:', error);
@@ -171,7 +208,6 @@ async function updateBooking(req, res) {
       return res.status(404).json({ message: 'Agendamento não encontrado' });
     }
 
-    // Só o dono cliente pode atualizar
     if (booking.userId !== userId) {
       return res.status(403).json({ message: 'Acesso negado' });
     }
@@ -180,6 +216,15 @@ async function updateBooking(req, res) {
     const newDuration = duration ?? booking.duration;
 
     if (date || duration) {
+      // Valida horário funcionamento no update também
+      if (isWeekend(newDate)) {
+        return res.status(400).json({ message: 'Agendamento não permitido em finais de semana' });
+      }
+
+      if (!isWithinWorkingHours(newDate, newDuration)) {
+        return res.status(400).json({ message: 'Agendamento fora do horário de funcionamento (8h às 18h)' });
+      }
+
       const newEnd = new Date(newDate.getTime() + newDuration * 60000);
 
       const conflicting = await prisma.booking.findFirst({
@@ -240,7 +285,6 @@ async function deleteBooking(req, res) {
       return res.status(404).json({ message: 'Agendamento não encontrado' });
     }
 
-    // Só o dono cliente pode deletar
     if (booking.userId !== userId) {
       return res.status(403).json({ message: 'Acesso negado' });
     }
