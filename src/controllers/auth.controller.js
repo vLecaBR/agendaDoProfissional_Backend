@@ -3,10 +3,12 @@ const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// Gera token JWT
 const generateToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
 };
 
+// Registro de usuário
 exports.register = async (req, res) => {
   const { name, email, password } = req.body;
 
@@ -19,17 +21,19 @@ exports.register = async (req, res) => {
       data: {
         name,
         email,
-        password: hashedPassword
-      }
+        password: hashedPassword,
+      },
     });
 
     const token = generateToken(user.id);
     res.status(201).json({ token, user });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Erro no registro' });
   }
 };
 
+// Login de usuário
 exports.login = async (req, res) => {
   const { email, password } = req.body;
 
@@ -43,20 +47,27 @@ exports.login = async (req, res) => {
     const token = generateToken(user.id);
     res.json({ token, user });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Erro no login' });
   }
 };
 
+// Buscar perfil do usuário autenticado
 exports.getProfile = async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
-      where: { id: req.userId },
-      select: { id: true, name: true, email: true }
+      where: { id: req.user.id }, // <- agora usamos req.user.id
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
     });
 
     if (!user) return res.status(404).json({ message: 'Usuário não encontrado' });
     res.json(user);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Erro ao buscar perfil' });
   }
 };
