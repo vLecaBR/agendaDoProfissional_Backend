@@ -1,9 +1,9 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// Criar agendamento (usuário é quem agenda, profissional é informado)
+// Criar agendamento (CLIENT cria, PROFESSIONAL é informado)
 async function createBooking(req, res) {
-  const userId = req.user.id; // Quem tá criando o agendamento (cliente)
+  const userId = req.user.id;
   const {
     professionalId,
     clientName,
@@ -21,10 +21,23 @@ async function createBooking(req, res) {
   }
 
   try {
-    // Verifica se profissional existe e tem role PROFESSIONAL
+    // Verifica se o profissional existe
     const professional = await prisma.user.findUnique({ where: { id: professionalId } });
     if (!professional || professional.role !== 'PROFESSIONAL') {
       return res.status(400).json({ message: 'Profissional inválido' });
+    }
+
+    // Verifica conflito de horário
+    const parsedDate = new Date(date);
+    const conflict = await prisma.booking.findFirst({
+      where: {
+        professionalId,
+        date: parsedDate,
+      },
+    });
+
+    if (conflict) {
+      return res.status(409).json({ message: 'Horário já está ocupado para esse profissional' });
     }
 
     const booking = await prisma.booking.create({
@@ -35,7 +48,7 @@ async function createBooking(req, res) {
         clientEmail,
         clientWhatsapp,
         serviceType,
-        date: new Date(date),
+        date: parsedDate,
         note,
       },
     });
@@ -47,25 +60,26 @@ async function createBooking(req, res) {
   }
 }
 
-// Listar agendamentos do usuário logado (cliente ou profissional)
+// Listar agendamentos
 async function listBookings(req, res) {
   const userId = req.user.id;
-  const userRole = req.user.role;
+  const role = req.user.role;
 
   try {
-    let bookings;
-    if (userRole === 'PROFESSIONAL') {
-      // Profissional vê os bookings que ele tem
+    let bookings = [];
+
+    if (role === 'CLIENT') {
+      bookings = await prisma.booking.findMany({
+        where: { userId },
+        orderBy: { date: 'asc' },
+      });
+    } else if (role === 'PROFESSIONAL') {
       bookings = await prisma.booking.findMany({
         where: { professionalId: userId },
         orderBy: { date: 'asc' },
       });
     } else {
-      // Cliente vê os próprios bookings
-      bookings = await prisma.booking.findMany({
-        where: { userId },
-        orderBy: { date: 'asc' },
-      });
+      return res.status(403).json({ message: 'Acesso negado' });
     }
 
     return res.json(bookings);
@@ -75,10 +89,10 @@ async function listBookings(req, res) {
   }
 }
 
-// Buscar um booking específico
+// Buscar agendamento específico
 async function getBooking(req, res) {
   const userId = req.user.id;
-  const userRole = req.user.role;
+  const role = req.user.role;
   const { id } = req.params;
 
   try {
@@ -88,10 +102,9 @@ async function getBooking(req, res) {
       return res.status(404).json({ message: 'Agendamento não encontrado' });
     }
 
-    // Só pode acessar se for cliente dono ou profissional responsável
     if (
-      (userRole === 'CLIENT' && booking.userId !== userId) ||
-      (userRole === 'PROFESSIONAL' && booking.professionalId !== userId)
+      (role === 'CLIENT' && booking.userId !== userId) ||
+      (role === 'PROFESSIONAL' && booking.professionalId !== userId)
     ) {
       return res.status(403).json({ message: 'Acesso negado' });
     }
@@ -103,7 +116,7 @@ async function getBooking(req, res) {
   }
 }
 
-// Atualizar agendamento (só quem criou pode atualizar)
+// Atualizar agendamento
 async function updateBooking(req, res) {
   const userId = req.user.id;
   const { id } = req.params;
@@ -113,7 +126,7 @@ async function updateBooking(req, res) {
     const booking = await prisma.booking.findUnique({ where: { id } });
 
     if (!booking || booking.userId !== userId) {
-      return res.status(404).json({ message: 'Agendamento não encontrado' });
+      return res.status(404).json({ message: 'Agendamento não encontrado ou acesso negado' });
     }
 
     const updated = await prisma.booking.update({
@@ -135,7 +148,7 @@ async function updateBooking(req, res) {
   }
 }
 
-// Deletar agendamento (só quem criou pode deletar)
+// Deletar agendamento
 async function deleteBooking(req, res) {
   const userId = req.user.id;
   const { id } = req.params;
@@ -144,7 +157,7 @@ async function deleteBooking(req, res) {
     const booking = await prisma.booking.findUnique({ where: { id } });
 
     if (!booking || booking.userId !== userId) {
-      return res.status(404).json({ message: 'Agendamento não encontrado' });
+      return res.status(404).json({ message: 'Agendamento não encontrado ou acesso negado' });
     }
 
     await prisma.booking.delete({ where: { id } });
@@ -155,10 +168,30 @@ async function deleteBooking(req, res) {
   }
 }
 
+// Listar horários ocupados por profissional
+async function getOccupiedSlots(req, res) {
+  const { professionalId } = req.params;
+
+  try {
+    const bookings = await prisma.booking.findMany({
+      where: { professionalId },
+      select: { date: true },
+      orderBy: { date: 'asc' },
+    });
+
+    const dates = bookings.map(b => b.date);
+    return res.json(dates);
+  } catch (error) {
+    console.error('Erro listando horários ocupados:', error);
+    return res.status(500).json({ message: 'Erro ao buscar horários ocupados' });
+  }
+}
+
 module.exports = {
   createBooking,
   listBookings,
   getBooking,
   updateBooking,
   deleteBooking,
+  getOccupiedSlots,
 };

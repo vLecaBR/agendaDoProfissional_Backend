@@ -37,19 +37,18 @@ model Schedule {
 }
 
 model Booking {
-  id String @id @default(uuid())
-
-  user   User   @relation("UserBookings", fields: [userId], references: [id])
-  userId String
-
-  professional   User   @relation("ProfessionalBookings", fields: [professionalId], references: [id])
+  id             String   @id @default(uuid())
+  userId         String
   professionalId String
-
   clientName     String
   clientEmail    String
-  clientWhatsapp String
+  clientWhatsapp String?
   serviceType    String
   date           DateTime
+  duration       Int // <- duração em minutos
   note           String?
   createdAt      DateTime @default(now())
+
+  user         User @relation("UserBookings", fields: [userId], references: [id])
+  professional User @relation("ProfessionalBookings", fields: [professionalId], references: [id])
 }
