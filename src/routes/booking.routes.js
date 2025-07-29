@@ -15,11 +15,13 @@ router.use(authenticate); // Protege tudo
 
 router.post('/', createBooking);
 router.get('/', listBookings);
+
+// ✅ Coloca rota mais específica ANTES
+router.get('/occupied/:professionalId', getOccupiedSlots);
+
+// ⚠️ Essa rota tem que ficar depois
 router.get('/:id', getBooking);
 router.put('/:id', updateBooking);
 router.delete('/:id', deleteBooking);
-
-// Nova rota para pegar horários ocupados de um profissional
-router.get('/occupied/:professionalId', getOccupiedSlots);
 
 module.exports = router;
