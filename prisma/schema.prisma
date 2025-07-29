@@ -12,12 +12,14 @@ model User {
   id          String     @id @default(uuid())
   name        String
   email       String     @unique
-  password    String
+  password    String?    // fica null se for login via Google
+  googleId    String?    // ID do Google se login for social
   calendarId  String?    
   schedule    Schedule[]
   bookings    Booking[]
   createdAt   DateTime   @default(now())
 }
+
 
 model Schedule {
   id        String   @id @default(uuid())
