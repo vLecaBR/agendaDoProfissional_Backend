@@ -7,19 +7,18 @@ const {
   deleteBooking,
   getOccupiedSlots,
 } = require('../controllers/booking.controller');
-const { authenticate } = require('../middlewares/auth.middleware');
+const { authenticate, authorizeRoles } = require('../middlewares/auth.middleware');
 
 const router = express.Router();
 
-router.use(authenticate); // Protege tudo
+router.use(authenticate); // protege todas as rotas com autenticação
 
 router.post('/', createBooking);
 router.get('/', listBookings);
 
-// ✅ Coloca rota mais específica ANTES
+// Rota mais específica antes das rotas com :id
 router.get('/occupied/:professionalId', getOccupiedSlots);
 
-// ⚠️ Essa rota tem que ficar depois
 router.get('/:id', getBooking);
 router.put('/:id', updateBooking);
 router.delete('/:id', deleteBooking);

@@ -252,5 +252,5 @@ module.exports = {
   getBooking,
   updateBooking,
   deleteBooking,
-  getOccupiedSlots, // 👈 não pode esquecer disso!
+  getOccupiedSlots, 
 };
