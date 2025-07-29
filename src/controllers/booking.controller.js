@@ -11,33 +11,54 @@ async function createBooking(req, res) {
     clientWhatsapp,
     serviceType,
     date,
+    duration,
     note,
   } = req.body;
 
-  if (!professionalId || !clientName || !clientEmail || !serviceType || !date) {
+  if (!professionalId || !clientName || !clientEmail || !serviceType || !date || !duration) {
     return res.status(400).json({
-      message: 'Campos obrigatórios: professionalId, clientName, clientEmail, serviceType, date',
+      message: 'Campos obrigatórios: professionalId, clientName, clientEmail, serviceType, date, duration',
     });
   }
 
   try {
-    // Verifica se o profissional existe
+    // Verifica se o profissional existe e tem role PROFESSIONAL
     const professional = await prisma.user.findUnique({ where: { id: professionalId } });
     if (!professional || professional.role !== 'PROFESSIONAL') {
       return res.status(400).json({ message: 'Profissional inválido' });
     }
 
-    // Verifica conflito de horário
-    const parsedDate = new Date(date);
-    const conflict = await prisma.booking.findFirst({
+    const startDate = new Date(date);
+    const endDate = new Date(startDate.getTime() + duration * 60000); // calcula horário de fim
+
+    // Verificar se já existe booking com conflito
+    const conflictingBooking = await prisma.booking.findFirst({
       where: {
         professionalId,
-        date: parsedDate,
+        OR: [
+          {
+            date: {
+              gte: startDate,
+              lt: endDate,
+            },
+          },
+          {
+            AND: [
+              { date: { lte: startDate } },
+              {
+                // booking atual termina depois do novo booking começar
+                date: {
+                  lt: endDate,
+                },
+              },
+            ],
+          },
+        ],
       },
     });
 
-    if (conflict) {
-      return res.status(409).json({ message: 'Horário já está ocupado para esse profissional' });
+    if (conflictingBooking) {
+      return res.status(409).json({ message: 'Esse horário já está ocupado para o profissional selecionado' });
     }
 
     const booking = await prisma.booking.create({
@@ -48,7 +69,8 @@ async function createBooking(req, res) {
         clientEmail,
         clientWhatsapp,
         serviceType,
-        date: parsedDate,
+        date: startDate,
+        duration,
         note,
       },
     });
@@ -59,6 +81,7 @@ async function createBooking(req, res) {
     return res.status(500).json({ message: 'Erro ao criar agendamento' });
   }
 }
+
 
 // Listar agendamentos
 async function listBookings(req, res) {
