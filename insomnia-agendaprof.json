@@ -1,0 +1,51 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2024-07-29T18:00:00.000Z",
+  "__export_source": "insomnia.desktop.app:v2024.4.0",
+  "resources": [
+    {
+      "_id": "wrk_agendify",
+      "name": "Agendify API",
+      "_type": "workspace"
+    },
+    {
+      "_id": "req_register",
+      "parentId": "wrk_agendify",
+      "_type": "request",
+      "name": "1. Register",
+      "method": "POST",
+      "url": "http://localhost:3333/api/auth/register",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"name\": \"Leça\",\n  \"email\": \"leca@teste.com\",\n  \"password\": \"123456\"\n}"
+      }
+    },
+    {
+      "_id": "req_login",
+      "parentId": "wrk_agendify",
+      "_type": "request",
+      "name": "2. Login",
+      "method": "POST",
+      "url": "http://localhost:3333/api/auth/login",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"email\": \"leca@teste.com\",\n  \"password\": \"123456\"\n}"
+      }
+    },
+    {
+      "_id": "req_me",
+      "parentId": "wrk_agendify",
+      "_type": "request",
+      "name": "3. Get Profile (token)",
+      "method": "GET",
+      "url": "http://localhost:3333/api/auth/me",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.token }}"
+        }
+      ]
+    }
+  ]
+}
