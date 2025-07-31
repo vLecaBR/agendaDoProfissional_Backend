@@ -112,34 +112,46 @@ async function createBooking(req, res) {
 }
 
 async function listBookings(req, res) {
-  const { id: userId, role: userRole } = req.user;
-  const { start, end } = req.query;
+  try {
+    const { id: userId, role: userRole } = req.user;
+    const { start, end } = req.query;
 
-  let filter = {};
-  if (start && end) {
-    filter.date = {
-      gte: new Date(start),
-      lte: new Date(end),
-    };
+    let filter = {};
+
+    // Valida datas antes de aplicar filtros
+    if (start && !isNaN(Date.parse(start))) {
+      filter.date = { ...(filter.date || {}), gte: new Date(start) };
+    }
+
+    if (end && !isNaN(Date.parse(end))) {
+      filter.date = { ...(filter.date || {}), lte: new Date(end) };
+    }
+
+    // Define filtros de acordo com o papel do usuário
+    if (userRole === 'ADMIN') {
+      // Admin vê todos os agendamentos
+    } else if (userRole === 'PROFESSIONAL') {
+      filter.professionalId = userId;
+    } else if (userRole === 'CLIENT') {
+      filter.userId = userId;
+    } else {
+      return res.status(403).json({ message: 'Acesso não autorizado' });
+    }
+
+    console.log('[Filtro de agendamentos]:', filter);
+
+    const bookings = await prisma.booking.findMany({
+      where: filter,
+      orderBy: { date: 'asc' },
+    });
+
+    return res.json(bookings);
+  } catch (error) {
+    console.error('[Erro ao listar agendamentos]:', error);
+    return res.status(500).json({ message: 'Erro interno no servidor' });
   }
-
-  if (userRole === 'ADMIN') {
-    // Admin vê todos
-  } else if (userRole === 'PROFESSIONAL') {
-    filter.professionalId = userId;
-  } else if (userRole === 'CLIENT') {
-    filter.userId = userId;
-  } else {
-    return res.status(403).json({ message: 'Acesso não autorizado' });
-  }
-
-  const bookings = await prisma.booking.findMany({
-    where: filter,
-    orderBy: { date: 'asc' },
-  });
-
-  return res.json(bookings);
 }
+
 
 async function getMyBookings(req, res) {
   const userId = req.user.id;
