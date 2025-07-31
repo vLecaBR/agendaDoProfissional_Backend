@@ -1,7 +1,10 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { PrismaClient, Role } = require('@prisma/client');
+const { OAuth2Client } = require('google-auth-library');
+
 const prisma = new PrismaClient();
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Gera token JWT
 const generateToken = (userId) => {
@@ -64,6 +67,47 @@ exports.login = async (req, res) => {
   } catch (err) {
     console.error('[LOGIN ERROR]', err);
     res.status(500).json({ error: 'Erro no login' });
+  }
+};
+
+// Login com Google OAuth
+exports.googleLogin = async (req, res) => {
+  const { token } = req.body;
+
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const email = payload.email;
+    const name = payload.name;
+
+    // Busca usuário pelo email
+    let user = await prisma.user.findUnique({ where: { email } });
+
+    // Cria usuário se não existir
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          name,
+          email,
+          role: Role.CLIENT,
+        },
+      });
+    }
+
+    const jwtToken = generateToken(user.id);
+    const { id, role, createdAt } = user;
+
+    res.json({
+      token: jwtToken,
+      user: { id, name, email, role, createdAt },
+    });
+  } catch (err) {
+    console.error('[GOOGLE LOGIN ERROR]', err);
+    res.status(401).json({ message: 'Falha no login com Google' });
   }
 };
 
